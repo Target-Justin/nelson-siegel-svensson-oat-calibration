@@ -1,10 +1,20 @@
-# Nelson-Siegel / Nelson-Siegel-Svensson Calibration of French OAT Zero-Coupon Rates
+# Nelson-Siegel-Svensson Calibration of the French OAT Zero-Coupon Curve
 
-Calibration of Nelson-Siegel (NS) and Nelson-Siegel-Svensson (NSS) models on a French government bond (OAT) zero-coupon yield curve, obtained through a separate bootstrap procedure.
+## Why this project?
 
-The project implements two independent calibration approaches and compares their fitted curves and objective values. The objective is to study the behavior of the calibration methods and their sensitivity to the weighting scheme used in the fitting process.
+A bootstrapped zero-coupon curve only gives rates at the maturities of the bonds it was built from. In my case, that is 19 French OATs between 2027 and 2045. But pricing, hedging, or risk work needs the rate at *any* maturity *t*, not only at those 19 points.
 
-This project was developed as part of a quantitative finance / fixed-income research project.
+**The question: how can we turn a discrete set of bootstrapped zero-coupon rates into a smooth, continuous curve, and can we trust the parameters that come out of it?**
+
+## Approach
+
+I fit the **Nelson-Siegel-Svensson** model, a parsimonious curve with six parameters that have an economic reading (long-term rate, slope, curvature), to the zero-coupon curve from my own from-scratch bootstrap. The calibration is done with a custom two-step method and benchmarked against a joint `scipy` optimization. I also test an inverse-duration weighting, which improves the fit on short and medium maturities at the expense of the long end.
+
+The answer on the reliability of the parameters is in [Why a Good Fit Is Not Enough](#why-a-good-fit-is-not-enough-identifiability); the full methodology is in [Calibration Methods](#calibration-methods).
+
+## Context
+
+This project was built as part of my search for a work-study position (*alternance*) in quantitative finance, with a focus on fixed income and credit.
 
 ## Contents
 
