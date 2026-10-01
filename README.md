@@ -27,33 +27,69 @@ This project was built as part of my search for a work-study position (*alternan
 - [Results](#results)
   - [Calibration Curves](#calibration-curves)
   - [Model Selection with AIC/BIC](#model-selection-with-aicbic)
+- [Requirements](#requirements)
 - [References](#references)
 
 ## Data
+
+All inputs come from my own from-scratch bootstrap project ([link to the bootstrap repository](https://github.com/Target-Justin/Zero-Coupon-Yield-Curve-Bootstrap)), which builds the zero-coupon curve from French OAT prices and characteristics.
+
+**Sources:**
+- **Euronext**: clean prices
+- **Agence France Trésor**: all other data (bond characteristics, cash flows)
 
 The pipeline uses four input files located in `data/raw/`:
 
 - `dataset.csv`: bond characteristics, including maturity, valuation date, day-count convention, etc.
 - `cashflow.csv`: coupon and principal cash flows for each bond and payment date
-- `dirty_price.csv`: observed dirty bond prices
-- `zero_rate.csv`: bootstrapped zero-coupon rates for 19 French OATs with maturities ranging from 2027 to 2045
+- `dirty_price.csv`: dirty bond prices, computed as Euronext clean prices plus accrued interest
+- `zero_rate.csv`: bootstrapped zero-coupon rates for 19 French OATs with maturities ranging from 2027 to 2045, used as the calibration target
 
-The zero-coupon curve used as the calibration target is produced by a separate bootstrap project.
+### Bond metrics
 
-From `dataset.csv` and `cashflow.csv`, the pipeline computes for each bond:
+For each bond, let `CF_k` be the cash flows paid at times `t_k` (in years from the valuation date). The **dirty price** is the clean price plus accrued interest, and the **yield-to-maturity** `y` (continuous compounding) solves:
 
-- **Yield-to-maturity** (`scripts/bond_metrics/yield_to_maturity.py`), obtained by solving the price/cash-flow equation using Newton-Raphson under continuous compounding
-- **Macaulay duration** (`scripts/bond_metrics/duration.py`), used to construct the inverse-duration weighting scheme described below
+```text
+P_dirty = Σ_k CF_k · exp(-y · t_k)
+```
+
+This equation is solved with Newton-Raphson (`scripts/bond_metrics/yield_to_maturity.py`):
+
+```text
+f(y)    = Σ_k CF_k · exp(-y · t_k) - P_dirty
+f'(y)   = -Σ_k t_k · CF_k · exp(-y · t_k)
+y_{n+1} = y_n - f(y_n) / f'(y_n)
+```
+
+The **Macaulay duration** (`scripts/bond_metrics/duration.py`) is the present-value-weighted average time of the cash flows:
+
+```text
+D = (1 / P_dirty) · Σ_k t_k · CF_k · exp(-y · t_k)
+```
+
+Under continuous compounding it equals the modified duration, `-(1/P) · dP/dy`. It is used to build the weights described in [Weighting Scheme](#weighting-scheme).
 
 ## Model
 
-The zero-coupon yield at maturity `t` is modeled as a combination of level, slope, and curvature factors. The NSS specification adds a second curvature factor:
+The zero-coupon yield at maturity `t` is a combination of level, slope and curvature factors:
 
 ```text
-y(t) = β1
-     + β2 · (1 - exp(-t/λ1)) / (t/λ1)
-     + β3 · [(1 - exp(-t/λ1)) / (t/λ1) - exp(-t/λ1)]
-     + β4 · [(1 - exp(-t/λ2)) / (t/λ2) - exp(-t/λ2)]   (NSS only)
+y(t) = β1 + β2 · x_1(t) + β3 · x_2(t) + β4 · x_3(t)      (β4 · x_3 : NSS only)
+```
+
+with the factor loadings:
+
+```text
+x_1(t) = (1 - exp(-t/λ1)) / (t/λ1)                    slope
+x_2(t) = (1 - exp(-t/λ1)) / (t/λ1) - exp(-t/λ1)       first curvature
+x_3(t) = (1 - exp(-t/λ2)) / (t/λ2) - exp(-t/λ2)       second curvature (NSS only)
+```
+
+All loadings vanish as `t → ∞`, and the curvature loadings also vanish as `t → 0`. The parameters therefore have a direct reading:
+
+```text
+lim t→∞ y(t) = β1         long-term rate
+lim t→0 y(t) = β1 + β2    short-term rate
 ```
 
 The two model specifications are:
@@ -69,7 +105,12 @@ For NSS, the optimization is subject to the identifiability constraint:
 
 This prevents the two curvature factors from becoming too similar and helps avoid severe collinearity.
 
-Once the lambda parameters are fixed, the beta parameters enter the model linearly. They can therefore be estimated efficiently using ordinary least squares (OLS).
+Once the lambdas are fixed, the model is linear in the betas: `y = Xβ + ε`, where row `i` of `X` is `[1, x_1(t_i), x_2(t_i), x_3(t_i)]` (without `x_3` for NS). The OLS solution is:
+
+```text
+unweighted:  β̂ = (XᵀX)⁻¹ Xᵀ y
+weighted:    β̂ = (XᵀWX)⁻¹ XᵀW y,    W = diag(1/D_1, …, 1/D_n)
+```
 
 ### Why a Good Fit Is Not Enough: Identifiability
 
@@ -96,6 +137,7 @@ The `calibrate_nss` procedure separates the optimization of the nonlinear and li
 2. The lambda parameters are searched using a coarse grid search followed by a local refinement:
    - `adaptive_step_search` for NS
    - `nelder_mead` for NSS
+   - for NSS, during the grid search, a pair `(λ1, λ2)` is discarded when `|corr(x_2(t_i), x_3(t_i))| > ρ_max`, with `ρ_max = 0.5`
 3. Conditional on the optimized lambda parameters, the beta parameters are estimated using OLS.
 4. For the weighted specification, the OLS step uses the same inverse-duration weighting.
 
@@ -215,7 +257,16 @@ For each configuration (`{model}` = `ns` / `nss`, `{weighting}` = `weighted` / `
 - `results/{model}_{weighting}_parameters.csv`: calibrated beta and lambda parameters, together with the SSR for each calibration method
 - `results/{model}_{weighting}_comparison.csv`: observed and fitted rates at each bond maturity, together with the difference between the two calibration methods in basis points
 - `results/{model}_{weighting}.png`: observed curve and fitted curves, with a residual comparison panel
-- a console summary containing the maximum and average absolute differences between fitted curves and the relative SSR difference
+- a console summary containing the SSR of both methods, the relative SSR difference, and the maximum and average absolute differences between the two fitted curves (in basis points)
+
+The two calibration methods are compared with:
+
+```text
+Δ_i = (y_joint(t_i) - y_two-step(t_i)) × 100                 [bp, rates in %]
+relative SSR difference = |SSR_joint - SSR_two-step| / SSR_two-step
+```
+
+`Δ_i` is the `DiffBp` column of the `comparison.csv` files.
 
 ### Calibration Curves
 
@@ -255,9 +306,9 @@ The figure shown for a given configuration is produced from the bootstrapped zer
 | Weighted | NS | 5.7856 | -3.1716 | -2.2026 | — | 4.7109 | — | 0.004003 |
 | Weighted | NSS | 5.3097 | -3.0013 | ~0 | -5.4757 | 0.8036 | 2.4544 | 0.002297 |
 
-For both weighting schemes, the joint optimization produces an SSR very close to that obtained with the two-step calibration, with a relative difference below 0.1%.
+For all four configurations, the joint optimization reaches an SSR within 0.03% of the two-step calibration (relative difference), and the two fitted curves never differ by more than 0.01 bp at any bond maturity.
 
-The NSS specification exhibits some sensitivity in the individual curvature coefficients, while the fitted yield curves remain very close. This is consistent with the fact that the two NSS curvature factors can become highly correlated over a limited maturity range (see [Why a Good Fit Is Not Enough](#why-a-good-fit-is-not-enough-identifiability)).
+In the NSS specification, this near-identical fit coexists with markedly different β3 and λ1 values between the two methods. This is consistent with the high correlation the two curvature factors can reach over a limited maturity range (see [Why a Good Fit Is Not Enough](#why-a-good-fit-is-not-enough-identifiability)).
 
 For the date considered here, the observed curve is monotonically increasing, without a pronounced double-hump shape.
 
@@ -289,29 +340,19 @@ These comparisons should be interpreted within each weighting scheme, since the 
 
 ## Requirements
 
-This project was developed and tested with the following versions:
+Developed and tested with:
 
+```text
 numpy==2.5.1
 scipy==1.18.0
 pandas==3.0.5
 QuantLib==1.43
-
-
-Install with:
-
-```bash
-pip install -r requirements.txt
 ```
 
-And the corresponding requirements.txt file:
-
-numpy==2.5.1
-scipy==1.18.0
-pandas==3.0.5
-QuantLib==1.43
+Install with `pip install -r requirements.txt`.
 
 ## References
 
-- Gilli, M., Groẞe, S. &Schumann, E. (2010). *Calibrating the Nelson-Siegel-Svensson model*. COMISEF Working Paper.
+- Gilli, M., Große, S. & Schumann, E. (2010). *Calibrating the Nelson-Siegel-Svensson model*. COMISEF Working Paper.
 - Wahlstrøm, R. R., Paraschiv, F., & Schürle, M. (2021). *A comparative analysis of parsimonious yield curve models with focus on the Nelson-Siegel, Svensson and Bliss versions*. Journal of Risk and Financial Management.
 - Gürkaynak, R. S., Sack, B., & Wright, J. H. (2007). *The U.S. Treasury Yield Curve: 1961 to the Present*. Finance and Economics Discussion Series, Federal Reserve Board.
