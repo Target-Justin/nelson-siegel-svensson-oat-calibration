@@ -8,7 +8,7 @@ A bootstrapped zero-coupon curve only gives rates at the maturities of the bonds
 
 ## Approach
 
-I fit the **Nelson-Siegel-Svensson** model, a parsimonious curve with six parameters that have an economic reading (long-term rate, slope, curvature), to the zero-coupon curve from my own from-scratch bootstrap. The calibration is done with a custom two-step method and benchmarked against a joint `scipy` optimization. I also test an inverse-duration weighting, which improves the fit on short and medium maturities at the expense of the long end.
+I fit the **Nelson-Siegel-Svensson** model, a parsimonious curve with six parameters that have an economic reading (long-term rate, slope, curvature), to the zero-coupon curve from my own from-scratch bootstrap. The calibration is done with a custom two-step method and benchmarked against a joint `scipy` optimization. I also test an inverse-duration weighting, which is designed to improve the fit on short and medium maturities at the expense of the long end.
 
 The answer on the reliability of the parameters is in [Why a Good Fit Is Not Enough](#why-a-good-fit-is-not-enough-identifiability); the full methodology is in [Calibration Methods](#calibration-methods).
 
@@ -116,14 +116,14 @@ weighted:    β̂ = (XᵀWX)⁻¹ XᵀW y,    W = diag(1/D_1, …, 1/D_n)
 
 Minimizing the SSR criterion turns out to be the easy part. Over a wide range of lambda values, the fit comes out numerically almost identical — because the two curvature factors (`x_2`, built from `λ1`, and `x_3`, built from `λ2`) become highly correlated whenever `λ1` and `λ2` sit close to each other over the observed maturity range. The SSR surface is flat there. Many different `(λ1, λ2, β3, β4)` combinations give fits that look indistinguishable, even though they aren't actually the same fit.
 
-Strictly speaking this isn't an infinite continuum of exact global minima — for any fixed `(λ1, λ2)` the OLS step still has a unique solution. But with finite data, optimizer tolerances, and floating-point precision, the objective behaves as if it were one: a large chunk of the parameter space is "good enough" on SSR alone, and two different optimization routines can land on very different points within that chunk without either being wrong.
+Strictly speaking this isn't an infinite continuum of exact global minima — for any fixed `(λ1, λ2)` the OLS step still has a unique solution. But with finite data, optimizer tolerances, and floating-point precision, the objective behaves as if it were one: a large chunk of the parameter space is "good enough" on SSR alone, and two different optimization routines can land on different points within that chunk without either being wrong.
 
 That's the reason for two safeguards in this project:
 
 - the grid search throws out candidate lambda pairs whose implied factor loadings are too correlated (above a fixed threshold) before any local refinement runs;
 - the NSS specification enforces `λ2 > λ1 + 1`, keeping the two curvature factors identifiable rather than just close to each other.
 
-Skip these and the calibration can converge to parameters that fit the data numerically but don't mean much economically — a curvature factor with an implausible lambda, say, or two curvature terms that basically duplicate each other. This isn't hypothetical: in the results below, the two-step and joint-optimization approaches converge to noticeably different values for β3 and λ1 in the NSS specification, despite producing nearly identical SSR. That's the near-degenerate region of the objective surface showing up directly in the numbers. Finding *a* fit is easy. Finding one whose parameters actually mean something is the harder and more interesting part of this exercise.
+Skip these and the calibration can converge to parameters that fit the data numerically but don't mean much economically — a curvature factor with an implausible lambda, say, or two curvature terms that basically duplicate each other. This isn't hypothetical: in the results below, the two-step and joint-optimization approaches converge to different values for β3 and λ1 in the NSS specification (in the weighted case, β3 ≈ 0 vs 0.20 and λ1 = 0.80 vs 0.86), despite producing nearly identical SSR. That's the near-degenerate region of the objective surface showing up directly in the numbers. Finding *a* fit is easy. Finding one whose parameters actually mean something is the harder and more interesting part of this exercise.
 
 ## Calibration Methods
 
@@ -136,7 +136,7 @@ The `calibrate_nss` procedure separates the optimization of the nonlinear and li
 1. The objective function is constructed using the sum of squared rate residuals (SSR), either unweighted or weighted by inverse duration.
 2. The lambda parameters are searched using a coarse grid search followed by a local refinement:
    - `adaptive_step_search` for NS
-   - `nelder_mead` for NSS
+   - `nelder_mead` for NSS (own implementation, as opposed to `scipy.optimize.minimize` in the joint approach)
    - for NSS, during the grid search, a pair `(λ1, λ2)` is discarded when `|corr(x_2(t_i), x_3(t_i))| > ρ_max`, with `ρ_max = 0.5`
 3. Conditional on the optimized lambda parameters, the beta parameters are estimated using OLS.
 4. For the weighted specification, the OLS step uses the same inverse-duration weighting.
@@ -299,16 +299,20 @@ The figure shown for a given configuration is produced from the bootstrapped zer
 
 ### Empirical Results Across the Four Configurations
 
-| Weighting | Model | β1 | β2 | β3 | β4 | λ1 | λ2 | SSR (two-step) |
-|---|---|---:|---:|---:|---:|---:|---:|---:|
-| Unweighted | NS | 5.5465 | -2.8819 | -2.4811 | — | 3.8171 | — | 0.030650 |
-| Unweighted | NSS | 5.3210 | -2.9611 | ~0 | -5.3853 | 0.8689 | 2.5128 | 0.026648 |
-| Weighted | NS | 5.7856 | -3.1716 | -2.2026 | — | 4.7109 | — | 0.004003 |
-| Weighted | NSS | 5.3097 | -3.0013 | ~0 | -5.4757 | 0.8036 | 2.4544 | 0.002297 |
+| Weighting | Model | Method | β1 | β2 | β3 | β4 | λ1 | λ2 | SSR |
+|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| Unweighted | NS | Two-step | 5.5465 | -2.8819 | -2.4811 | — | 3.8171 | — | 0.030650 |
+| Unweighted | NS | Scipy | 5.5465 | -2.8819 | -2.4810 | — | 3.8173 | — | 0.030650 |
+| Unweighted | NSS | Two-step | 5.3210 | -2.9611 | ~0 | -5.3853 | 0.8689 | 2.5128 | 0.026648 |
+| Unweighted | NSS | Scipy | 5.3208 | -2.9617 | 0.0308 | -5.3867 | 0.8770 | 2.5121 | 0.026648 |
+| Weighted | NS | Two-step | 5.7856 | -3.1716 | -2.2026 | — | 4.7109 | — | 0.004003 |
+| Weighted | NS | Scipy | 5.7857 | -3.1716 | -2.2026 | — | 4.7110 | — | 0.004003 |
+| Weighted | NSS | Two-step | 5.3097 | -3.0013 | ~0 | -5.4757 | 0.8036 | 2.4544 | 0.002297 |
+| Weighted | NSS | Scipy | 5.3093 | -2.9989 | 0.1975 | -5.4807 | 0.8577 | 2.4528 | 0.002298 |
 
 For all four configurations, the joint optimization reaches an SSR within 0.03% of the two-step calibration (relative difference), and the two fitted curves never differ by more than 0.01 bp at any bond maturity.
 
-In the NSS specification, this near-identical fit coexists with markedly different β3 and λ1 values between the two methods. This is consistent with the high correlation the two curvature factors can reach over a limited maturity range (see [Why a Good Fit Is Not Enough](#why-a-good-fit-is-not-enough-identifiability)).
+In NS, both methods land on the same point: parameters agree to the third or fourth decimal. In NSS, the fitted curves are indistinguishable, but the parameters are not exactly the same. The two-step method sets β3 to ~0, whereas the joint optimization keeps a small positive β3 (0.03 unweighted, 0.20 weighted), with λ1 shifted by about 1% and 7% respectively. The other parameters (β4, λ2) agree within 0.1%. The weighted case is the clearer illustration of the identifiability issue (see [Why a Good Fit Is Not Enough](#why-a-good-fit-is-not-enough-identifiability)).
 
 For the date considered here, the observed curve is monotonically increasing, without a pronounced double-hump shape.
 
