@@ -79,6 +79,18 @@ comparison = pd.DataFrame({"Maturity": zero_rate["Maturity"], "TimeToMaturity": 
                            "ScipyFittedRatePct": scipy_fitted_rates,"DiffBp": diff_bp})
 comparison.to_csv(f"results/{model_name}_{weighting_name}_comparison.csv", index=False)
 
+# --- Console summary ---
+ssr_two_step = float(ssr)
+relative_ssr_diff = abs(ssr_scipy - ssr_two_step) / ssr_two_step
+abs_diff_bp = np.abs(diff_bp)
+
+print(f"\n=== {model_name.upper()} ({weighting_name}): two-step vs scipy ===")
+print(f"SSR two-step          : {ssr_two_step:.6f}")
+print(f"SSR scipy             : {ssr_scipy:.6f}")
+print(f"Relative SSR diff     : {relative_ssr_diff:.4%}")
+print(f"Max |fitted diff|     : {abs_diff_bp.max():.4f} bp")
+print(f"Mean |fitted diff|    : {abs_diff_bp.mean():.4f} bp")
+
 # --- Plot: fitted curve against the bootstrapped points ---
 fig=plot_zero_rates_curve(zero_rate, is_ns, is_weighted, lambda_1, lambda_2, beta_matrix, scipy_result)
 fig.savefig(f"results/{model_name}_{weighting_name}.png", dpi=300, bbox_inches="tight")
