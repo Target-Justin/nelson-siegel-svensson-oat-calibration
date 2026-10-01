@@ -32,7 +32,7 @@ duration=generate_duration(bond, cashflow)
 duration.to_csv("data/processed/duration.csv", index=False)
 
 # --- Calibration settings ---
-is_ns=True          # True: Nelson-Siegel (3 betas, 1 lambda); False: Svensson (4 betas, 2 lambdas)
+is_ns=False         # True: Nelson-Siegel (3 betas, 1 lambda); False: Svensson (4 betas, 2 lambdas)
 is_weighted=True    # weighted OLS: better fit on short/medium maturities, at the cost of the long end
 
 # 0.5 = max correlation threshold between factors, used to discard lambda
