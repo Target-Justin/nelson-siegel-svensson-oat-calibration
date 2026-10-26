@@ -1,15 +1,19 @@
 from typing import Callable
 
-def nelder_mead(penalized_ssr_score : Callable[[float, float], float], lambda_1 : float, lambda_2 : float, initial_shift : float, max_iteration : int) -> tuple[float, float]:
+def nelder_mead(penalized_ssr_score : Callable[[float, float], float], lambda_1 : float, lambda_2 : float, initial_shift : float, x_rtol : float, f_rtol : float, max_iteration : int) -> tuple[float, float]:
     """
     2-D Nelder-Mead refinement of (lambda_1, lambda_2) around a starting
     point, minimizing penalized_ssr_score.
 
-    Standard reflect/expand/contract/shrink simplex updates;
-    penalized_ssr_score is expected to return +inf outside the admissible
-    region (the NSS identifiability constraint lambda_2 > lambda_1 + 1),
-    so the simplex avoids it. Returns the best (lambda_1, lambda_2) found
-    after max_iteration steps.
+    Standard reflect/expand/contract/shrink simplex updates. The initial
+    simplex shifts each lambda by initial_shift. penalized_ssr_score is
+    expected to return +inf outside the admissible region (lambda_1 > 0,
+    lambda_2 > lambda_1 + 1, lambda_2 <= LAMBDA_MAX), so the simplex avoids it.
+
+    Stops when the relative spread of the vertices around the best one is
+    at most x_rtol and the SSR spread is at most f_rtol * best SSR, and
+    returns the best vertex.
+    Raises RuntimeError if not converged after max_iteration iterations.
     """
     
     u=(lambda_1, lambda_2)
@@ -28,6 +32,13 @@ def nelder_mead(penalized_ssr_score : Callable[[float, float], float], lambda_1 
         best, ssr_best=list_sorted[0]
         second_best, ssr_second_best=list_sorted[1]
         worst, ssr_worst=list_sorted[2]
+
+        x_spread=max(abs(second_best[0]-best[0])/best[0], abs(second_best[1]-best[1])/best[1],
+                     abs(worst[0]-best[0])/best[0], abs(worst[1]-best[1])/best[1])
+        ssr_spread=ssr_worst-ssr_best
+
+        if x_spread<=x_rtol and ssr_spread<=f_rtol*ssr_best:
+            return best
 
         centroid=((best[0]+second_best[0])/2, (best[1]+second_best[1])/2)
         reflected=(2*centroid[0]-worst[0], 2*centroid[1]-worst[1])
@@ -77,4 +88,4 @@ def nelder_mead(penalized_ssr_score : Callable[[float, float], float], lambda_1 
 
             list_sorted.sort(key=lambda x: x[1])
 
-    return list_sorted[0][0]
+    raise RuntimeError("Nelder-Mead did not converge: tolerance not reached after max_iteration iterations.")
