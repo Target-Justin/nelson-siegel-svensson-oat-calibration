@@ -216,3 +216,32 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# VS Code
+.vscode/
+
+# =========================================================
+# Bloomberg data: NOT publishable (raw + anything derived)
+# =========================================================
+
+# 1. Raw Bloomberg exports
+data/raw/ois/
+*.xlsx
+*.xls
+*.xlsm
+
+# 2. Transformed data (zero rates, discount factors, durations
+#    computed from the quotes: they allow recovering the source data)
+data/processed/ois/
+
+# 3. Results built from Bloomberg data (CSV, plots, NSS parameters)
+results/ois/
+
+# 4. Safety net: any file named after an OIS curve, wherever it lands
+#    (e.g. an output written to results/ by a wrong output_dir)
+*estr*
+*sofr*
+*ESTR*
+*SOFR*
+!*.py
+!*.md

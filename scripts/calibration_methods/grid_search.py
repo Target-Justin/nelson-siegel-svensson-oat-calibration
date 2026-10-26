@@ -1,18 +1,19 @@
 import pandas as pd
 import numpy as np
-from scripts.nss_factors import x_1, x_2, x_3
+from scripts.common.nss_factors import x_1, x_2, x_3
 from typing import Callable
 
-def grid_search(zero_rate : pd.DataFrame, is_ns : bool, ssr_score : Callable[[float, float], float], threshold : float) -> tuple[float, float | None]:
+def grid_search(zero_rate : pd.DataFrame, is_ns : bool, ssr_score : Callable[[float, float], float], threshold : float, lambda_1_grid : np.ndarray, lambda_2_grid : np.ndarray) -> tuple[float, float | None]:
     """
     Coarse grid search for a starting lambda (NS) or (lambda_1, lambda_2)
     pair (NSS), to initialize the local refinement in calibrate_nss.
 
-    Candidates are drawn from a fixed grid and evaluated by ssr_score; a
-    candidate is skipped if any pair of its factor loadings has a
-    correlation exceeding threshold (avoids an ill-conditioned factor
-    loadings matrix). lambda_2 is None when is_ns is True.
+    Candidates are drawn from lambda_1_grid (and lambda_2_grid for NSS, keeping
+    only lambda_2 > lambda_1 + 1) and evaluated by ssr_score. A candidate is
+    skipped if any pair of its factor loadings has an absolute correlation
+    at or above threshold (avoids an ill-conditioned factor loadings matrix).
 
+    Returns (lambda_1, lambda_2), with lambda_2 = None when is_ns is True.
     Raises ValueError if no candidate satisfies the threshold.
     """
 
@@ -21,8 +22,6 @@ def grid_search(zero_rate : pd.DataFrame, is_ns : bool, ssr_score : Callable[[fl
     ssr=np.inf
 
     lambda_1,lambda_2=None,None
-    lambda_1_grid = np.linspace(0.10, 2.40, 47)
-    lambda_2_grid = np.linspace(2.50, 5.45, 60)
 
     for lambda_1_candidate in lambda_1_grid:
 
@@ -61,7 +60,7 @@ def grid_search(zero_rate : pd.DataFrame, is_ns : bool, ssr_score : Callable[[fl
                     lambda_1, lambda_2, ssr= lambda_1_candidate, lambda_2_candidate, new_ssr
 
     if lambda_1 is None:
-        raise ValueError(f"No (lambda_1, lambda_2) pair satisfies the correlation "
+        raise ValueError(f"No lambda candidate satisfies the correlation "
                         f"threshold={threshold}. Try increasing the threshold.")
 
     return lambda_1,lambda_2
