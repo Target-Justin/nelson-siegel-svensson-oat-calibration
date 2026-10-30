@@ -11,7 +11,7 @@ A bootstrapped zero-coupon curve only gives rates at the maturities of the instr
 I fit the **Nelson-Siegel (NS)** and **Nelson-Siegel-Svensson (NSS)** models to zero-coupon curves produced by my own from-scratch bootstrap ([Zero-Coupon Yield Curve Bootstrap](https://github.com/Target-Justin/Zero-Coupon-Yield-Curve-Bootstrap)), on two very different datasets:
 
 - **French OATs**: 19 government bonds maturing between 2027 and 2045, one valuation date (public data, included);
-- **OIS curves**: €STR and SOFR swaps from 1 week to 50 years, 7 valuation dates between 2021 and 2026 (Bloomberg data, *not* included).
+- **OIS curves**: €STR and SOFR swaps from 1 week to 50 years, 13 curves (6 valuation dates for €STR, 7 for SOFR) between 2021 and 2026 (Bloomberg data, *not* included).
 
 Each fit is calibrated with two independent methods (a custom two-step method and a joint `scipy` optimization) and with or without weights: inverse duration for the OATs, inverse squared bid-ask spread for the OIS.
 
@@ -61,7 +61,7 @@ The OAT pipeline reads four files in `data/raw/bonds/`:
 
 **Source:** Bloomberg curve exports for €STR and SOFR overnight indexed swaps, bootstrapped in the bootstrap project. The quotes cannot be redistributed, and neither can anything derived from them (zero rates, fitted curves, parameters, plots): see [Data Availability](#data-availability).
 
-- 2 indices × 7 valuation dates: 2021-06-30, 2022-06-30, 2022-12-30, 2023-03-31, 2023-10-31, 2024-12-30, 2026-10-02
+- 13 curves: SOFR on 7 valuation dates (2021-06-30, 2022-06-30, 2022-12-30, 2023-03-31, 2023-10-31, 2024-12-30, 2026-10-02) and €STR on the same dates except 2021-06-30 (see the data check below)
 - 32 pillars per curve, from 1 week to 50 years (the overnight rate is excluded)
 - time to maturity in ACT/360 from the settlement date (T+2 business days), continuously compounded zero rates
 
@@ -80,11 +80,11 @@ The OIS pipeline reads a single long-format file, `data/raw/ois/zero_rate.csv`, 
 | `Bid`, `Ask` | par swap rate quotes, in % |
 | `BidAskSpreadBp` | `Ask - Bid`, in basis points |
 
-> **Data check.** The €STR export labelled 2021-06-30 failed a sanity check: its rate levels are inconsistent with that date (€STR was negative in mid-2021) and match a later date. It is excluded from all the OIS statistics below until it is re-extracted. The figures therefore cover **13 curves** (6 €STR, 7 SOFR).
+> **Data check.** The €STR export labelled 2021-06-30 failed a sanity check: its rate levels were inconsistent with that date (€STR was negative in mid-2021) and matched a later date. The re-extracted export has consistent levels, but its long end is made of Euribor swaps converted to OIS equivalents by Bloomberg, not of OIS swaps, which the bootstrap project does not accept. This curve is therefore excluded from all the OIS statistics below, which cover **13 curves** (6 €STR, 7 SOFR).
 
 ### Bond metrics (OAT only)
 
-For each bond, let `CF_k` be the cash flows paid at times `t_k` (in years from the settlement date). The **yield to maturity** `y` (continuous compounding) solves:
+For each bond, let `CF_k` be the cash flows paid at times `t_k` (in years from the settlement date, T+2 business days on the TARGET calendar). The **yield to maturity** `y` (continuous compounding) solves:
 
 ```text
 P_dirty = Σ_k CF_k · exp(-y · t_k)
@@ -389,7 +389,7 @@ Dataset-specific grids and thresholds fixed both problems. The lesson is that th
 - **Bid-ask spread as a proxy.** The spread is quoted on the par swap rate, not on the bootstrapped zero rate.
 - **The short end of OIS curves.** The 1-week to 3-month pillars follow the central-bank meeting calendar, a step-shaped profile that a smooth model cannot reproduce. Starting the curve at 1 month, or weighting each pillar by the maturity interval it represents, would reduce the weight of this cluster of short pillars. A first test of interval-based weights moved the error from the long end to the short end without lowering the overall maximum.
 - **A more principled filter.** The pairwise correlation filter is a heuristic. The condition number of the factor matrix measures more directly whether the OLS step becomes unstable.
-- **Next steps:** an out-of-sample test, the time series of `β1`, `β2`, `β3` and the lambdas across the 7 dates, and a direct fit of NSS on par swap rates (instead of bootstrapped zero rates) to compare the identifiability of the parameters.
+- **Next steps:** an out-of-sample test, the time series of `β1`, `β2`, `β3` and the lambdas across the valuation dates (6 for €STR, 7 for SOFR), and a direct fit of NSS on par swap rates (instead of bootstrapped zero rates) to compare the identifiability of the parameters.
 
 ## Data Availability
 
