@@ -22,7 +22,7 @@ def generate_yield_to_maturity(bond : pd.DataFrame, cashflow : pd.DataFrame) -> 
 
         bd=bond_data.Bond
         evaluation_date=to_ql_date(bond_data.EvaluationDate)
-        settlement_date=SETTLEMENT_CALENDAR_CONVENTIONS["OAT"].advance(evaluation_date, SETTLEMENT_DAYS_CONVENTIONS["OAT"])
+        settlement_date=SETTLEMENT_CALENDAR_CONVENTIONS["OAT"].advance(evaluation_date, SETTLEMENT_DAYS_CONVENTIONS["OAT"], ql.Days)
         maturity=bond_data.Maturity
         dp=bond_data.DirtyPrice
         day_counter=get_day_counter(bond_data.DayCount)
