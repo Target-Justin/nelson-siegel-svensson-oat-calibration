@@ -1,5 +1,4 @@
 import argparse as ap
-import pandas as pd
 
 from config import RAW_DIR
 from scripts.bonds.pipeline import run_bonds
@@ -14,11 +13,6 @@ def main():
     is missing (the OIS data are not published).
     """
 
-    file_path=RAW_DIR["OIS"] / "zero_rate.csv"
-    if not file_path.exists():
-        raise FileNotFoundError(f"No OIS input found at {file_path}. The Bloomberg data are not published: see the Data Availability section of the README.")
-    zero_rate_all=pd.read_csv(file_path)
-
     parser = ap.ArgumentParser(description = "Run a bootstrap pipeline")
     parser.add_argument("target", choices = ["bonds","ois","all"], nargs = "?", default = "all")
     args = parser.parse_args()
@@ -29,7 +23,11 @@ def main():
         run_ois()
     elif args.target == "all":
         run_bonds()
-        run_ois()
+        ois_input = RAW_DIR["OIS"] / "zero_rate.csv"
+        if ois_input.exists():
+            run_ois()
+        else:
+            print(f"OIS step skipped: {ois_input} not found (the Bloomberg data are not published, see the Data Availability section of the README).")
 
 if __name__ == "__main__":
     main()
