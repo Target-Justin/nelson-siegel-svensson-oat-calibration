@@ -10,10 +10,14 @@ def generate_yield_to_maturity(bond : pd.DataFrame, cashflow : pd.DataFrame) -> 
     """
     Solve each bond's YTM by Newton-Raphson: the continuously-compounded
     rate that discounts its cashflows (from settlement = evaluation date + 2
-    calendar days) to the observed dirty price. Initial guess: 3%.
+    TARGET business days) to the observed dirty price. Initial guess: 3%.
 
+    Requires the columns Bond, EvaluationDate, Maturity, DirtyPrice and
+    DayCount in bond, and Bond, Date and Cashflow in cashflow.
     Returns a DataFrame with the columns Bond, Maturity and YieldToMaturity
     (decimal).
+    Raises RuntimeError if Newton-Raphson does not converge, and ValueError
+    if its derivative becomes too small.
     """
     
     yield_to_maturity=[]
